@@ -418,7 +418,7 @@ function verifyPassword(password: string, combinedHash?: string): boolean {
   return hash === originalHash;
 }
 
-// Background synchronization of managed clients from Firestore /users
+// Background synchronization of managed clients with Firestore /users (bidirectional)
 async function syncClientsFromFirestore() {
   try {
     const snap = await getDocs(collection(serverDb, 'users'));
@@ -454,8 +454,17 @@ async function syncClientsFromFirestore() {
       saveClientStore();
       console.log(`[Blaze Auth] Synced ${managedClientStore.length} client(s) with Firestore.`);
     }
+
+    // Bidirectional sync: Push any disk-persisted clients to Firestore /users (safe profile fields only)
+    for (const client of managedClientStore) {
+      const { passwordHash: _, password: __, temporaryPassword: ___, ...safeDoc } = client;
+      try {
+        await setDoc(doc(serverDb, 'users', client.id), sanitizeForFirestore(safeDoc), { merge: true });
+      } catch {}
+    }
+    console.log(`[Blaze Auth] Seeded/verified all ${managedClientStore.length} client profiles in Firestore /users.`);
   } catch (err: any) {
-    console.warn('Notice syncing clients from Firestore:', err.message);
+    console.warn('Notice syncing clients with Firestore:', err.message);
   }
 }
 syncClientsFromFirestore();
@@ -477,7 +486,7 @@ function verifyAdminAuthorization(req: Request): boolean {
 }
 
 // Admin: List all provisioned clients - passwords and hashes are strictly stripped
-app.get('/api/admin/clients', (req: Request, res: Response) => {
+const handleGetClients = (req: Request, res: Response) => {
   if (!verifyAdminAuthorization(req)) {
     return res.status(403).json({ error: 'Access denied: Administrator privileges required (admin@blaze.com.pk only).' });
   }
@@ -487,10 +496,15 @@ app.get('/api/admin/clients', (req: Request, res: Response) => {
     status: safe.status || 'Active',
   }));
   res.json({ clients: safeClients });
-});
+};
+
+app.get('/api/admin/clients', handleGetClients);
+app.get('/api/admin/clients/', handleGetClients);
+app.get('/api/clients', handleGetClients);
+app.get('/api/clients/', handleGetClients);
 
 // Admin: Create / Provision new client account
-app.post('/api/admin/clients', async (req: Request, res: Response) => {
+const handleCreateClient = async (req: Request, res: Response) => {
   if (!verifyAdminAuthorization(req)) {
     return res.status(403).json({ error: 'Access denied: Administrator privileges required (admin@blaze.com.pk only).' });
   }
@@ -589,7 +603,12 @@ app.post('/api/admin/clients', async (req: Request, res: Response) => {
     client: safeClient,
     message: `Client account provisioned for ${newClient.name} (${newClient.email}).`,
   });
-});
+};
+
+app.post('/api/admin/clients', handleCreateClient);
+app.post('/api/admin/clients/', handleCreateClient);
+app.post('/api/clients', handleCreateClient);
+app.post('/api/clients/', handleCreateClient);
 
 // Admin: Reset client password handler (supports URL parameter or request body)
 const handleAdminResetPasswordRequest = async (req: Request, res: Response) => {
@@ -731,9 +750,11 @@ const handleAdminResetPasswordRequest = async (req: Request, res: Response) => {
 
 app.post('/api/admin/clients/:id/reset-password', handleAdminResetPasswordRequest);
 app.post('/api/admin/clients/reset-password', handleAdminResetPasswordRequest);
+app.post('/api/clients/:id/reset-password', handleAdminResetPasswordRequest);
+app.post('/api/clients/reset-password', handleAdminResetPasswordRequest);
 
 // Admin: Delete client account
-app.delete('/api/admin/clients/:id', (req: Request, res: Response) => {
+const handleDeleteClient = (req: Request, res: Response) => {
   if (!verifyAdminAuthorization(req)) {
     return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
   }
@@ -760,7 +781,10 @@ app.delete('/api/admin/clients/:id', (req: Request, res: Response) => {
   } catch {}
 
   res.json({ success: true, message: 'Client account deleted successfully.', remaining: managedClientStore.length });
-});
+};
+
+app.delete('/api/admin/clients/:id', handleDeleteClient);
+app.delete('/api/clients/:id', handleDeleteClient);
 
 // Authentication & Roles API
 const AUTH_ACCOUNTS = {

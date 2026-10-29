@@ -97,11 +97,16 @@ export const ManageClientsModal: React.FC<ManageClientsModalProps> = ({
 
   useEffect(() => {
     setIsLoading(true);
+    loadClients();
     const unsubscribe = subscribeToManagedClients(
       (list) => {
-        setClients(list);
-        setIsLoading(false);
-        if (onClientsUpdated) onClientsUpdated(list);
+        if (list && list.length > 0) {
+          setClients(list);
+          setIsLoading(false);
+          if (onClientsUpdated) onClientsUpdated(list);
+        } else {
+          loadClients();
+        }
       },
       (err) => {
         console.warn('Realtime clients sync fallback to fetch:', err);

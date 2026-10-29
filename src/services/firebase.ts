@@ -407,37 +407,48 @@ export async function adminCreateClientAccount(params: {
   };
 
   // 1. Synchronize to protected persistent server store where password is encrypted/hashed with PBKDF2
-  const apiUrl =
-    typeof window !== 'undefined' ? '/api/admin/clients' : 'http://localhost:3000/api/admin/clients';
+  const apiUrls = typeof window !== 'undefined'
+    ? ['/api/admin/clients', '/api/clients', 'http://localhost:3000/api/admin/clients']
+    : ['http://localhost:3000/api/admin/clients', 'http://localhost:3000/api/clients', '/api/admin/clients'];
 
   let savedClient: ManagedClientRecord | null = null;
-  try {
-    const resp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-email': 'admin@blaze.com.pk',
-        'Authorization': 'Bearer admin@blaze.com.pk',
-      },
-      body: JSON.stringify({
-        ...clientRecord,
-        initialPassword: params.temporaryPassword,
-        adminEmail: 'admin@blaze.com.pk',
-      }),
-    });
+  let lastError: any = null;
 
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      throw new Error(errData.error || `Server responded with status ${resp.status}`);
-    }
+  for (const apiUrl of apiUrls) {
+    try {
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': 'admin@blaze.com.pk',
+          'Authorization': 'Bearer admin@blaze.com.pk',
+        },
+        body: JSON.stringify({
+          ...clientRecord,
+          initialPassword: params.temporaryPassword,
+          adminEmail: 'admin@blaze.com.pk',
+        }),
+      });
 
-    const data = await resp.json();
-    if (data.client) {
-      savedClient = data.client;
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.client) {
+          savedClient = data.client;
+          lastError = null;
+          break;
+        }
+      } else {
+        const errData = await resp.json().catch(() => ({}));
+        lastError = new Error(errData.error || `Server responded with status ${resp.status}`);
+      }
+    } catch (err: any) {
+      lastError = err;
     }
-  } catch (err: any) {
-    console.error('Failed to save client account to persistent server store:', err);
-    throw new Error(`Failed to save client credentials: ${err.message}`);
+  }
+
+  if (lastError && !savedClient) {
+    console.error('Failed to save client account to persistent server store:', lastError);
+    throw new Error(`Failed to save client credentials: ${lastError.message}`);
   }
 
   const finalClient = savedClient || clientRecord;
@@ -467,22 +478,28 @@ export async function fetchManagedClients(adminEmail?: string): Promise<ManagedC
 
   // 1. Fetch directly from server endpoint (the canonical persistent store)
   try {
-    const apiUrl =
-      typeof window !== 'undefined' ? '/api/admin/clients' : 'http://localhost:3000/api/admin/clients';
-    const res = await fetch(apiUrl, {
-      headers: {
-        'x-admin-email': cleanAdmin,
-        'Authorization': 'Bearer admin@blaze.com.pk',
-      },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.clients)) {
-        data.clients.forEach((c: ManagedClientRecord) => {
-          const key = c.email?.toLowerCase().trim() || c.id;
-          clientMap.set(key, c);
+    const apiUrls = typeof window !== 'undefined'
+      ? ['/api/admin/clients', '/api/clients']
+      : ['http://localhost:3000/api/admin/clients', 'http://localhost:3000/api/clients'];
+    for (const apiUrl of apiUrls) {
+      try {
+        const res = await fetch(apiUrl, {
+          headers: {
+            'x-admin-email': cleanAdmin,
+            'Authorization': 'Bearer admin@blaze.com.pk',
+          },
         });
-      }
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.clients)) {
+            data.clients.forEach((c: ManagedClientRecord) => {
+              const key = c.email?.toLowerCase().trim() || c.id;
+              clientMap.set(key, c);
+            });
+            break;
+          }
+        }
+      } catch {}
     }
   } catch (err) {
     console.warn('Server clients fetch notice:', err);
@@ -512,16 +529,31 @@ export async function fetchManagedClients(adminEmail?: string): Promise<ManagedC
   return list;
 }
 
-// Real-time synchronization of Managed Clients from Firestore /users
+// Real-time synchronization of Managed Clients from Firestore /users + backend store
 export function subscribeToManagedClients(
   onClients: (clients: ManagedClientRecord[]) => void,
   onError?: (err: any) => void
 ): () => void {
+  // Eagerly load from backend server and Firestore combined
+  fetchManagedClients().then((initial) => {
+    if (initial && initial.length > 0) {
+      onClients(initial);
+    }
+  }).catch(() => {});
+
   const usersCol = collection(db, 'users');
 
   return onSnapshot(
     usersCol,
-    (snapshot) => {
+    async (snapshot) => {
+      try {
+        const merged = await fetchManagedClients();
+        if (merged && merged.length > 0) {
+          onClients(merged);
+          return;
+        }
+      } catch {}
+
       const items: ManagedClientRecord[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as ManagedClientRecord;
@@ -538,6 +570,7 @@ export function subscribeToManagedClients(
     (error) => {
       console.warn('Real-time clients sync notice:', error.message);
       if (onError) onError(error);
+      fetchManagedClients().then(onClients).catch(() => {});
     }
   );
 }
