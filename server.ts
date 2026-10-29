@@ -554,11 +554,10 @@ const handleCreateClient = async (req: Request, res: Response) => {
     }
     saveClientStore();
 
-    // Sync non-sensitive profile data to Firestore
+    // Sync client profile and salted PBKDF2 hash to Firestore
     try {
       const primaryClient = managedClientStore[matchingIndices[0]];
-      const { passwordHash: _, ...safeFirestoreDoc } = primaryClient;
-      await setDoc(doc(serverDb, 'users', primaryClient.id), sanitizeForFirestore(safeFirestoreDoc), { merge: true });
+      await setDoc(doc(serverDb, 'users', primaryClient.id), sanitizeForFirestore(primaryClient), { merge: true });
     } catch (fsErr: any) {
       console.warn('Firestore doc sync error:', fsErr.message);
     }
@@ -589,10 +588,9 @@ const handleCreateClient = async (req: Request, res: Response) => {
   managedClientStore.unshift(newClient);
   saveClientStore();
 
-  // Save ONLY safe profile fields to Firestore - NEVER store passwords in Firestore
+  // Save profile and salted PBKDF2 hash to Firestore
   try {
-    const { passwordHash: _, ...safeFirestoreDoc } = newClient;
-    await setDoc(doc(serverDb, 'users', newClientId), sanitizeForFirestore(safeFirestoreDoc), { merge: true });
+    await setDoc(doc(serverDb, 'users', newClientId), sanitizeForFirestore(newClient), { merge: true });
   } catch (fsErr: any) {
     console.warn('Firestore doc save error:', fsErr.message);
   }
@@ -731,15 +729,18 @@ const handleAdminResetPasswordRequest = async (req: Request, res: Response) => {
 
   const primaryClient = managedClientStore[targetIndices[0]];
 
-  // Update timestamp in Firestore without storing any password
+  // Update passwordHash and timestamp in Firestore across all matching accounts
   try {
-    await setDoc(
-      doc(serverDb, 'users', primaryClient.id),
-      { updatedAt: new Date().toISOString() },
-      { merge: true }
-    );
+    for (const idx of targetIndices) {
+      const rec = managedClientStore[idx];
+      await setDoc(
+        doc(serverDb, 'users', rec.id),
+        { passwordHash: secureHash, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    }
   } catch (err: any) {
-    console.warn('Notice updating timestamp in Firestore on reset password:', err.message);
+    console.warn('Notice updating passwordHash in Firestore on reset password:', err.message);
   }
 
   res.json({

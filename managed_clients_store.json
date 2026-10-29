@@ -1,5 +1,33 @@
 [
   {
+    "id": "usr_client_379130",
+    "name": "Vercel Test Client",
+    "email": "vercel_test_1793269379130@agency.com",
+    "organization": "Vercel Media Group",
+    "designation": "Chief Media Director",
+    "role": "client",
+    "status": "Active",
+    "permittedCities": [],
+    "createdAt": "2026-10-29T10:22:59.358Z",
+    "createdBy": "admin@blaze.com.pk",
+    "passwordHash": "0821a50823b9d20ffa858cbb4994ef11:b2d273e0ecf0de890dec1b45c470111b781c51409841dfae473ddf6e4d027e30c0f20dd7a2fd1397deffb9343df6ecdbfe3f2fbe6c9a6e900df7ed393ed09b6e",
+    "updatedAt": "2026-10-29T10:22:59.766Z"
+  },
+  {
+    "id": "usr_client_352341",
+    "name": "Vercel Test Client",
+    "email": "vercel_test_1793269352340@agency.com",
+    "organization": "Vercel Media Group",
+    "designation": "Chief Media Director",
+    "role": "client",
+    "status": "Active",
+    "permittedCities": [],
+    "createdAt": "2026-10-29T10:22:32.594Z",
+    "createdBy": "admin@blaze.com.pk",
+    "passwordHash": "47efb14ae5ec6c46a65d2b0e02eb09d3:ec8a5fd1c0a43b72ad312f95241cecc3ac535e8f00306f9a8d54cc1f643ba0f49d56fc29184c72345c212e9ee858f02a5475d1b70ce7c443d1f52b604f530efc",
+    "updatedAt": "2026-10-29T10:22:33.043Z"
+  },
+  {
     "id": "usr_client_201716",
     "name": "Browser Client",
     "email": "browser_test@blaze.com.pk",
