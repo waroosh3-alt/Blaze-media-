@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Media Assets Master Catalog (synchronized in real time across all browsers/devices)
+    match /mediaAssets/{assetId} {
+      allow read, write: if true;
+    }
+
+    // Client Campaign Bookings & Reservations
+    match /bookings/{bookingId} {
+      allow read, write: if true;
+    }
+
+    // Media Vendors & Concessionaires Master Directory
+    match /vendors/{vendorId} {
+      allow read, write: if true;
+    }
+
+    // System Admins
+    match /admins/{adminUid} {
+      allow read, write: if true;
+    }
+
+    // Registered Client User Profiles & Accounts
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Connection Health Check collection (used by testConnection)
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
